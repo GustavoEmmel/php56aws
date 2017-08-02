@@ -22,7 +22,8 @@ ENV LANGUAGE de_DE.UTF-8
 RUN apt-get update
 
 # Get PHP 5.6 version
-RUN add-apt-repository ppa:ondrej/php
+RUN add-apt-repository ppa:ondrej/php -y && \
+echo ''
 
 # Update system
 RUN apt-get -y update
