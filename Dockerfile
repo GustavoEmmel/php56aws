@@ -2,7 +2,7 @@
 
 #
 FROM ubuntu:14.04
-MAINTAINER Julius Beckmann <docker@h4cc.de>
+MAINTAINER Gustavo Reichelt Emmel <gremmel@gmail.com>
 
 # Set correct environment variables.
 ENV HOME /root
