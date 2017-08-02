@@ -1,51 +1,65 @@
-FROM phusion/baseimage:0.9.18
+FROM centos/s2i-base-centos7
 
-MAINTAINER Bo-Yi Wu <appleboy.tw@gmail.com>
+# This image provides an Apache+PHP environment for running PHP
+# applications.
 
-# Default baseimage settings
-ENV HOME /root
-RUN /etc/my_init.d/00_regen_ssh_host_keys.sh
-CMD ["/sbin/my_init"]
-ENV DEBIAN_FRONTEND noninteractive
+EXPOSE 8080
 
-# Add the PPA for PHP 5.6
-RUN add-apt-repository ppa:ondrej/php5-5.6 -y
+ENV PHP_VERSION=5.6 \
+    PATH=$PATH:/opt/rh/rh-php56/root/usr/bin
 
-# Update software list and install php + nginx
-RUN apt-get update \
-  && apt-get install -y --force-yes \
-  php5 \
-  php5-fpm \
-  php5-cli \
-  php5-mysql \
-  php5-mcrypt \
-  php5-curl \
-  php5-gd \
-  php5-intl \
-  mysql-client
+ENV SUMMARY="Platform for building and running PHP $PHP_VERSION applications" \
+    DESCRIPTION="PHP $PHP_VERSION available as docker container is a base platform for \
+building and running various PHP $PHP_VERSION applications and frameworks. \
+PHP is an HTML-embedded scripting language. PHP attempts to make it easy for developers \
+to write dynamically generated web pages. PHP also offers built-in database integration \
+for several commercial and non-commercial database management systems, so writing \
+a database-enabled webpage with PHP is fairly simple. The most common use of PHP coding \
+is probably as a replacement for CGI scripts."
 
-# Clear cache
-RUN apt-get clean \
-  && rm -rf /var/lib/apt/lists/* \
-  /tmp/* \
-  /var/tmp/*
+LABEL summary="$SUMMARY" \
+      description="$DESCRIPTION" \
+      io.k8s.description="$DESCRIPTION" \
+      io.k8s.display-name="Apache 2.4 with PHP 5.6" \
+      io.openshift.expose-services="8080:http" \
+      io.openshift.tags="builder,php,php56,rh-php56" \
+      name="centos/php-56-centos7" \
+      com.redhat.component="rh-php56-docker" \
+      version="5.6" \
+      release="1" \
+      maintainer="SoftwareCollections.org <sclorg@redhat.com>"
 
-# Configure nginx
-RUN mkdir -p /var/www
+# Install Apache httpd and PHP
+RUN yum install -y centos-release-scl && \
+    INSTALL_PKGS="rh-php56 rh-php56-php rh-php56-php-mysqlnd rh-php56-php-pgsql rh-php56-php-bcmath \
+                  rh-php56-php-gd rh-php56-php-intl rh-php56-php-ldap rh-php56-php-mbstring rh-php56-php-pdo \
+                  rh-php56-php-pecl-memcache rh-php56-php-process rh-php56-php-soap rh-php56-php-opcache rh-php56-php-xml \
+                  rh-php56-php-pecl-xdebug rh-php56-php-gmp" && \
+    yum install -y --setopt=tsflags=nodocs --enablerepo=centosplus $INSTALL_PKGS && \
+    rpm -V $INSTALL_PKGS && \
+    yum clean all -y
 
-# Configure PHP
-RUN sed -i "s/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/" /etc/php5/fpm/php.ini
-RUN sed -i "s/;date.timezone =.*/date.timezone = Asia\/Taipei/" /etc/php5/fpm/php.ini
-RUN sed -i -e "s/;daemonize\s*=\s*yes/daemonize = no/g" /etc/php5/fpm/php-fpm.conf
-RUN sed -i "s/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/" /etc/php5/cli/php.ini
-RUN sed -i "s/;date.timezone =.*/date.timezone = Asia\/Taipei/" /etc/php5/cli/php.ini
-RUN php5enmod mcrypt
+# Copy the S2I scripts from the specific language image to $STI_SCRIPTS_PATH
+COPY ./s2i/bin/ $STI_SCRIPTS_PATH
 
-# clear cache.
-RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+# Copy extra files to the image.
+COPY ./root/ /
 
-# Add nginx volumes
-VOLUME ["/var/www"]
+# In order to drop the root user, we have to make some directories world
+# writeable as OpenShift default security model is to run the container under
+# random UID.
+RUN sed -i -f /opt/app-root/etc/httpdconf.sed /opt/rh/httpd24/root/etc/httpd/conf/httpd.conf && \
+    echo "IncludeOptional /opt/app-root/etc/conf.d/*.conf" >> /opt/rh/httpd24/root/etc/httpd/conf/httpd.conf && \
+    sed -i '/php_value session.save_path/d' /opt/rh/httpd24/root/etc/httpd/conf.d/rh-php56-php.conf && \
+    head -n151 /opt/rh/httpd24/root/etc/httpd/conf/httpd.conf | tail -n1 | grep "AllowOverride All" || exit && \
+    mkdir /tmp/sessions && \
+    chown -R 1001:0 /opt/app-root /tmp/sessions && \
+    chmod -R a+rwx /tmp/sessions && \
+    chmod -R ug+rwx /opt/app-root && \
+    chmod -R a+rwx /etc/opt/rh/rh-php56 && \
+    chmod -R a+rwx /opt/rh/httpd24/root/var/run/httpd
 
-# Set the work directory
-WORKDIR /var/www
+USER 1001
+
+# Set the default CMD to print the usage of the language image
+CMD $STI_SCRIPTS_PATH/usage
