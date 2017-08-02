@@ -1,39 +1,51 @@
-FROM internavenue/centos-base:centos7
+FROM phusion/baseimage:0.9.18
 
-MAINTAINER Gustavo Reichelt Emmel <gremmel@gmail.com>
+MAINTAINER Bo-Yi Wu <appleboy.tw@gmail.com>
 
-# Install Remi Collet's repo for CentOS 7
-RUN yum -y install \
-  http://rpms.famillecollet.com/enterprise/remi-release-7.rpm \
-  http://www.percona.com/downloads/percona-release/percona-release-0.0-1.x86_64.rpm
+# Default baseimage settings
+ENV HOME /root
+RUN /etc/my_init.d/00_regen_ssh_host_keys.sh
+CMD ["/sbin/my_init"]
+ENV DEBIAN_FRONTEND noninteractive
 
-# Install PHP and Percona (MySQL) client stuff and the latest stable PHP.
-RUN yum -y install --enablerepo=remi,remi-php56 \
-  Percona-Server-client-56 \
-  php-cli \
-  php-fpm \
-  php-gd \
-  php-mbstring \
-  php-mcrypt \
-  php-mysqlnd \
-  php-opcache \
-  php-pdo \
-  php-pear \
-  php-soap \
-  php-xml \
-  php-pecl-imagick \
-  php-pecl-apcu
+# Add the PPA for PHP 5.6
+RUN add-apt-repository ppa:ondrej/php5-5.6 -y
 
-# Clean up YUM when done.
-RUN yum clean all
+# Update software list and install php + nginx
+RUN apt-get update \
+  && apt-get install -y --force-yes \
+  php5 \
+  php5-fpm \
+  php5-cli \
+  php5-mysql \
+  php5-mcrypt \
+  php5-curl \
+  php5-gd \
+  php5-intl \
+  mysql-client
 
-# Add Composer
-RUN curl -sS https://getcomposer.org/installer | php && mv composer.phar /usr/local/bin/composer && chmod +x /usr/local/bin/composer
+# Clear cache
+RUN apt-get clean \
+  && rm -rf /var/lib/apt/lists/* \
+  /tmp/* \
+  /var/tmp/*
 
-ADD scripts /scripts
-RUN chmod +x /scripts/start.sh
+# Configure nginx
+RUN mkdir -p /var/www
 
-# Expose our web root and log directories log.
-VOLUME ["/srv/www", "/var/log", "/var/lib/php", "/run", "/vagrant"]
+# Configure PHP
+RUN sed -i "s/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/" /etc/php5/fpm/php.ini
+RUN sed -i "s/;date.timezone =.*/date.timezone = Asia\/Taipei/" /etc/php5/fpm/php.ini
+RUN sed -i -e "s/;daemonize\s*=\s*yes/daemonize = no/g" /etc/php5/fpm/php-fpm.conf
+RUN sed -i "s/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/" /etc/php5/cli/php.ini
+RUN sed -i "s/;date.timezone =.*/date.timezone = Asia\/Taipei/" /etc/php5/cli/php.ini
+RUN php5enmod mcrypt
 
-EXPOSE 9000 22
+# clear cache.
+RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Add nginx volumes
+VOLUME ["/var/www"]
+
+# Set the work directory
+WORKDIR /var/www
