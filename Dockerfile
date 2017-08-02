@@ -79,6 +79,10 @@ RUN apt-get -y autoremove && apt-get clean && apt-get autoclean && \
 # Install composer
 RUN curl https://getcomposer.org/installer | php -- && mv composer.phar /usr/local/bin/composer && chmod +x /usr/local/bin/composer
 
+# Install phpunit
+RUN curl https://phar.phpunit.de/phpunit-5.4.8.phar -o /usr/bin/phpunit  && chmod +x /usr/bin/phpunit
+
+
 # Allow mounting files
 VOLUME ["/root"]
 
