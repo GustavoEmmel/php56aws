@@ -1,6 +1,6 @@
 FROM internavenue/centos-base:centos7
 
-MAINTAINER Intern Avenue Dev Team <dev@internavenue.com>
+MAINTAINER Gustavo Reichelt Emmel <gremmel@gmail.com>
 
 # Install Remi Collet's repo for CentOS 7
 RUN yum -y install \
@@ -26,11 +26,6 @@ RUN yum -y install --enablerepo=remi,remi-php56 \
 
 # Clean up YUM when done.
 RUN yum clean all
-
-RUN echo "cgi.fix_pathinfo = 0;" >> /etc/php.ini
-ADD etc/fastcgi_params.conf /etc/nginx/conf/fastcgi_params.conf
-RUN mv /etc/php-fpm.d/www.conf /etc/php-fpm.d/www.conf.default
-ADD etc/www.conf /etc/php-fpm.d/www.conf
 
 # Add Composer
 RUN curl -sS https://getcomposer.org/installer | php && mv composer.phar /usr/local/bin/composer && chmod +x /usr/local/bin/composer
