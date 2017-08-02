@@ -1,66 +1,227 @@
-# Dockerfile for a ubuntu 14.04 image with stock php 5.5 with all extensions installed.
-
+# =============================================================================
+# stefanorg/centos-php56
 #
-FROM ubuntu:14.04
-MAINTAINER Gustavo Reichelt Emmel <gremmel@gmail.com>
+# CentOS-6, Apache 2.2, PHP 5.6, APC
+# 
+# =============================================================================
+FROM jdeathe/centos-ssh:centos-6
 
-# Set correct environment variables.
-ENV HOME /root
-ENV DEBIAN_FRONTEND noninteractive
-ENV INITRD No
+MAINTAINER Stefano Corallo <stefanorg@gmail.com>
 
-# Our user in the container
-USER root
-WORKDIR /root
-
-# Need to generate our locale.
-RUN locale-gen de_DE de_DE.UTF-8
-ENV LANG de_DE.UTF-8
-ENV LANGUAGE de_DE.UTF-8
-
-# Update system
-RUN apt-get update
-
-# Get PHP 5.6 version
-RUN add-apt-repository ppa:ondrej/php -y && \
-echo ''
-
-# Update system
-RUN apt-get -y update
-
-# Install and Test PHP
-RUN apt-get install --no-install-recommends -y \
-		curl ca-certificates \
-		php5.6 \
-		php5.6-mcrypt \
-		php5.6-mbstring  \
-		php5.6-curl \
-		php5.6-cli \
-		php5.6-mysql \
-		php5-mysql php5-pgsql \
-		php5.6-gd \
-		php5.6-intl \
-		php5.6-xsl \
-		php5.6-zip  \
-		php5.6-bcmath \
-		php5.6-xml  \
-		
-		php --v && \
-		php -m
-		
-# Tidy up
-RUN apt-get -y autoremove && apt-get clean && apt-get autoclean && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
-# Install composer
-RUN curl https://getcomposer.org/installer | php -- && mv composer.phar /usr/local/bin/composer && chmod +x /usr/local/bin/composer
-
-# Install phpunit
-RUN curl https://phar.phpunit.de/phpunit-5.4.8.phar -o /usr/bin/phpunit  && chmod +x /usr/bin/phpunit
+# -----------------------------------------------------------------------------
+# PHP 5.6 repository
+# -----------------------------------------------------------------------------
+RUN rpm -Uvh https://mirror.webtatic.com/yum/el6/latest.rpm
 
 
-# Allow mounting files
-VOLUME ["/root"]
+# -----------------------------------------------------------------------------
+# Base Apache, PHPOrder
+# -----------------------------------------------------------------------------
+RUN yum -y install \
+	elinks \
+	httpd \
+	mod_ssl \
+	php56w \
+	php56w-cli \
+	php56w-pecl-apcu \
+	php56w-pecl-memcached \
+    php56w-pecl-xdebug \
+    php56w-pecl-opcache \
+	&& rm -rf /var/cache/yum/* \
+	&& yum clean all
 
-# PHP is our entry point
-CMD ["/usr/bin/php"]
+# Display the contents of the new certificate for reference
+RUN openssl x509 -in /etc/pki/tls/certs/localhost.crt -text
+
+# -----------------------------------------------------------------------------
+# Global Apache configuration changes
+# -----------------------------------------------------------------------------
+RUN sed -i \
+	-e 's~^ServerSignature On$~ServerSignature Off~g' \
+	-e 's~^ServerTokens OS$~ServerTokens Prod~g' \
+	-e 's~^#ExtendedStatus On$~ExtendedStatus On~g' \
+	-e 's~^DirectoryIndex \(.*\)$~DirectoryIndex \1 index.php~g' \
+	-e 's~^NameVirtualHost \(.*\)$~#NameVirtualHost \1~g' \
+	/etc/httpd/conf/httpd.conf
+
+# -----------------------------------------------------------------------------
+# Disable Apache directory indexes
+# -----------------------------------------------------------------------------
+RUN sed -i \
+	-e 's~^IndexOptions \(.*\)$~#IndexOptions \1~g' \
+	-e 's~^IndexIgnore \(.*\)$~#IndexIgnore \1~g' \
+	-e 's~^AddIconByEncoding \(.*\)$~#AddIconByEncoding \1~g' \
+	-e 's~^AddIconByType \(.*\)$~#AddIconByType \1~g' \
+	-e 's~^AddIcon \(.*\)$~#AddIcon \1~g' \
+	-e 's~^DefaultIcon \(.*\)$~#DefaultIcon \1~g' \
+	-e 's~^ReadmeName \(.*\)$~#ReadmeName \1~g' \
+	-e 's~^HeaderName \(.*\)$~#HeaderName \1~g' \
+	/etc/httpd/conf/httpd.conf
+
+# -----------------------------------------------------------------------------
+# Disable Apache language based content negotiation
+# -----------------------------------------------------------------------------
+RUN sed -i \
+	-e 's~^LanguagePriority \(.*\)$~#LanguagePriority \1~g' \
+	-e 's~^ForceLanguagePriority \(.*\)$~#ForceLanguagePriority \1~g' \
+	-e 's~^AddLanguage \(.*\)$~#AddLanguage \1~g' \
+	/etc/httpd/conf/httpd.conf
+
+# -----------------------------------------------------------------------------
+# Disable all Apache modules and enable the minimum
+# -----------------------------------------------------------------------------
+RUN sed -i \
+	-e 's~^\(LoadModule .*\)$~#\1~g' \
+	-e 's~^#LoadModule mime_module ~LoadModule mime_module ~g' \
+	-e 's~^#LoadModule log_config_module ~LoadModule log_config_module ~g' \
+	-e 's~^#LoadModule setenvif_module ~LoadModule setenvif_module ~g' \
+	-e 's~^#LoadModule status_module ~LoadModule status_module ~g' \
+	-e 's~^#LoadModule authz_host_module ~LoadModule authz_host_module ~g' \
+	-e 's~^#LoadModule dir_module ~LoadModule dir_module ~g' \
+	-e 's~^#LoadModule alias_module ~LoadModule alias_module ~g' \
+	-e 's~^#LoadModule expires_module ~LoadModule expires_module ~g' \
+	-e 's~^#LoadModule deflate_module ~LoadModule deflate_module ~g' \
+	-e 's~^#LoadModule headers_module ~LoadModule headers_module ~g' \
+	-e 's~^#LoadModule alias_module ~LoadModule alias_module ~g' \
+	/etc/httpd/conf/httpd.conf
+
+# -----------------------------------------------------------------------------
+# Custom Apache configuration
+# -----------------------------------------------------------------------------
+RUN echo $'\n#\n# Custom configuration\n#' >> /etc/httpd/conf/httpd.conf \
+	&& echo 'Options -Indexes' >> /etc/httpd/conf/httpd.conf \
+	&& echo 'Listen 8443' >> /etc/httpd/conf/httpd.conf \
+	&& echo 'NameVirtualHost *:80' >> /etc/httpd/conf/httpd.conf \
+	&& echo 'NameVirtualHost *:8443' >> /etc/httpd/conf/httpd.conf \
+	&& echo '#NameVirtualHost *:443' >> /etc/httpd/conf/httpd.conf \
+	&& echo 'Include /var/www/app/vhost.conf' >> /etc/httpd/conf/httpd.conf \
+	&& echo '#Include /var/www/app/vhost-ssl.conf' >> /etc/httpd/conf/httpd.conf \
+	&& echo $'\n<Location /server-status>' >> /etc/httpd/conf/httpd.conf \
+	&& echo '    SetHandler server-status' >> /etc/httpd/conf/httpd.conf \
+	&& echo '    Order deny,allow' >> /etc/httpd/conf/httpd.conf \
+	&& echo '    Deny from all' >> /etc/httpd/conf/httpd.conf \
+	&& echo '    Allow from localhost 127.0.0.1' >> /etc/httpd/conf/httpd.conf \
+	&& echo '</Location>' >> /etc/httpd/conf/httpd.conf
+
+# -----------------------------------------------------------------------------
+# Limit process for the application user
+# -----------------------------------------------------------------------------
+RUN echo $'\napache\tsoft\tnproc\t30\napache\thard\tnproc\t50' >> /etc/security/limits.conf \
+	&& echo $'\napp-www\tsoft\tnproc\t30\napp-www\thard\tnproc\t50' >> /etc/security/limits.conf
+
+# -----------------------------------------------------------------------------
+# Disable the default SSL Virtual Host
+# 	Simplest approach is to use non-standard port instead of attempting to 
+# 	comment out or remove the necessary lines
+# -----------------------------------------------------------------------------
+RUN sed -i \
+	-e 's~^<VirtualHost _default_:443>$~<VirtualHost _default_:404>~g' \
+	/etc/httpd/conf.d/ssl.conf
+
+# -----------------------------------------------------------------------------
+# Disable the SSL support by default
+# -----------------------------------------------------------------------------
+RUN mv /etc/httpd/conf.d/ssl.conf /etc/httpd/conf.d/ssl.conf.off \
+	&& touch /etc/httpd/conf.d/ssl.conf \
+	&& chmod 444 /etc/httpd/conf.d/ssl.conf
+
+# -----------------------------------------------------------------------------
+# Global PHP configuration changes
+# -----------------------------------------------------------------------------
+RUN sed -i \
+	-e 's~^;date.timezone =$~date.timezone = UTC~g' \
+	-e 's~^;user_ini.filename =$~user_ini.filename =~g' \
+	/etc/php.ini
+
+# -----------------------------------------------------------------------------
+# APC op-code cache stats
+#	Note there will be 1 cache per process if using mod_fcgid
+# -----------------------------------------------------------------------------
+#RUN sed -i \
+#	-e "s~'ADMIN_PASSWORD','password'~'ADMIN_PASSWORD','apc!123'~g" \
+#	-e "s~'DATE_FORMAT', 'Y/m/d H:i:s'~'DATE_FORMAT', 'Y-m-d H:i:s'~g" \
+#	-e "s~php_uname('n');~gethostname();~g"
+#\
+#	/usr/share/doc/php56w-pecl-apcu-4.0.7/apc.php
+
+# -----------------------------------------------------------------------------
+# Add default service users
+# -----------------------------------------------------------------------------
+RUN useradd -u 501 -d /var/www/app -m app \
+	&& useradd -u 502 -d /var/www/app -M -s /sbin/nologin -G app app-www \
+	&& usermod -a -G app-www app \
+	&& usermod -a -G app-www apache
+
+# -----------------------------------------------------------------------------
+# Add a symbolic link to the app users home within the home directory &
+# Create the initial directory structure
+# -----------------------------------------------------------------------------
+RUN ln -s /var/www/app /home/app \
+	&& mkdir -p /var/www/app/{public_html,src,var/{log,session,tmp}}
+
+# -----------------------------------------------------------------------------
+# Populate the app home directory
+# -----------------------------------------------------------------------------
+ADD var/www/app/vhost.conf /var/www/app/vhost.conf
+ADD var/www/app/vhost.conf /var/www/app/vhost-ssl.conf
+ADD var/www/app/public_html/index.php /var/www/app/public_html/index.php
+ADD var/www/app/public_html/adminer.php /var/www/app/public_html/adminer.php
+ADD var/www/app/APC-Admin-master /var/www/app/public_html/APC-Admin-master
+
+# Add PHP Info _phpinfo.php
+RUN echo '<?php phpinfo(); ?>' > /var/www/app/public_html/_phpinfo.php
+
+# -----------------------------------------------------------------------------
+# Create the SSL VirtualHosts configuration file
+# -----------------------------------------------------------------------------
+RUN sed -i \
+	-e 's~^<VirtualHost \*:80 \*:8443>$~#<VirtualHost \*:80 \*:8443>~g' \
+	-e 's~^#<VirtualHost \*:443>$~<VirtualHost \*:443>~g' \
+	-e 's~#SSLEngine \(.*\)$~SSLEngine \1~g' \
+	-e 's~#SSLOptions \(.*\)$~SSLOptions \1~g' \
+	-e 's~#SSLProtocol \(.*\)$~SSLProtocol \1~g' \
+	-e 's~#SSLCipherSuite \(.*\)$~SSLCipherSuite \1~g' \
+	-e 's~#SSLCertificateFile \(.*\)$~SSLCertificateFile \1~g' \
+	-e 's~#SSLCertificateKeyFile \(.*\)$~SSLCertificateKeyFile \1~g' \
+	/var/www/app/vhost-ssl.conf
+
+# -----------------------------------------------------------------------------
+# Set permissions (app:app-www === 501:502)
+# -----------------------------------------------------------------------------
+RUN chown -R 501:502 /var/www/app \
+	&& chmod 775 /var/www/app
+
+# -----------------------------------------------------------------------------
+# Create the template directory
+# -----------------------------------------------------------------------------
+RUN cp -rpf /var/www/app /var/www/.app-skel
+
+# -----------------------------------------------------------------------------
+# Copy files into place
+# -----------------------------------------------------------------------------
+ADD etc/apache-bootstrap /etc/
+ADD etc/services-config/httpd/apache-bootstrap.conf /etc/services-config/httpd/
+ADD etc/services-config/supervisor/supervisord.conf /etc/services-config/supervisor/
+
+RUN mkdir -p /etc/services-config/{httpd/{conf,conf.d},ssl/{certs,private}} \
+	&& cp /etc/httpd/conf/httpd.conf /etc/services-config/httpd/conf/ \
+	&& ln -sf /etc/services-config/httpd/apache-bootstrap.conf /etc/apache-bootstrap.conf \
+	&& ln -sf /etc/services-config/httpd/conf/httpd.conf /etc/httpd/conf/httpd.conf \
+	&& ln -sf /etc/services-config/ssl/certs/localhost.crt /etc/pki/tls/certs/localhost.crt \
+	&& ln -sf /etc/services-config/ssl/private/localhost.key /etc/pki/tls/private/localhost.key \
+	&& ln -sf /etc/services-config/supervisor/supervisord.conf /etc/supervisord.conf \
+	&& chmod +x /etc/apache-bootstrap
+
+# -----------------------------------------------------------------------------
+# Set default environment variables used to identify the service container
+# -----------------------------------------------------------------------------
+ENV APACHE_SERVER_NAME app-1.local
+ENV APACHE_SERVER_ALIAS app-1
+ENV SERVICE_UNIT_APP_GROUP app-1
+ENV SERVICE_UNIT_LOCAL_ID 1
+ENV SERVICE_UNIT_INSTANCE 1
+ENV DATE_TIMEZONE UTC
+
+EXPOSE 80 8443 443
+
+CMD ["/usr/bin/supervisord", "--configuration=/etc/supervisord.conf"]
