@@ -27,10 +27,6 @@ RUN yum -y install --enablerepo=remi,remi-php56 \
 # Clean up YUM when done.
 RUN yum clean all
 
-ADD scripts /scripts
-RUN chmod +x /scripts/start.sh
-RUN touch /first_run
-
 RUN echo "cgi.fix_pathinfo = 0;" >> /etc/php.ini
 ADD etc/fastcgi_params.conf /etc/nginx/conf/fastcgi_params.conf
 RUN mv /etc/php-fpm.d/www.conf /etc/php-fpm.d/www.conf.default
@@ -46,6 +42,3 @@ RUN chmod +x /scripts/start.sh
 VOLUME ["/srv/www", "/var/log", "/var/lib/php", "/run", "/vagrant"]
 
 EXPOSE 9000 22
-
-# Kicking in
-CMD ["/scripts/start.sh"]
