@@ -1,47 +1,27 @@
-FROM ubuntu:16.04
+FROM amazonlinux
 
-MAINTAINER Alexey Nurgaliev <atnurgaliev@gmail.com>
+MAINTAINER Gustavo Reichelt Emmel <gremmel@gmail.com>
 
-ENV LANG=C.UTF-8
-ENV DEBIAN_FRONTEND=noninteractive
+RUN yum update -y && \
+	yum install -y gcc make && \
+    yum install httpd24 -y && \
+    yum install -y nginx php56-fpm && \
+    yum install -y php56-devel php-mysql php56-pdo php56-pear php56-mbstring php56-cli php56-odbc php56-imap php56-gd php56-xml php56-soap && \
+    yum install php56-mysqlnd && \
+    
+    yum install -y php56-pecl-apc && \
+    yum install -y pcre-devel && \
+    yum -y install mysql-server mysql && \
+    yum install php56-mysqlnd
 
-ADD docker /docker
+RUN sed -i -e "s/AllowOverride None/AllowOverride All/" /etc/httpd/conf/httpd.conf
+RUN sed -i -e "s/Options Indexes FollowSymLinks/Options -Indexes +FollowSymLinks/" /etc/httpd/conf/httpd.conf
+RUN chkconfig httpd on
+RUN chkconfig nginx on
+RUN chkconfig mysqld on
+RUN chkconfig php-fpm on
 
-RUN apt-get update &&\
-    apt-get upgrade -y &&\
-    apt-get install -y software-properties-common &&\
-    add-apt-repository -y ppa:ondrej/php &&\
-    add-apt-repository -y ppa:nginx/stable &&\
-    apt-get update &&\
-    apt-get install -y \
-      nginx \
-      php5.6-fpm php5.6-cli php5.6-cgi \
-      php5.6-interbase php5.6-pgsql php5.6-mysql \
-      php5.6-curl php5.6-mbstring \
-      php5.6-gd php5.6-xml php5.6-zip php5.6-json \
-      php-pear php-igbinary php-mongo php-redis &&\
-    apt-get purge -y --auto-remove software-properties-common &&\
+expose 80
+expose 443
 
-    rm /etc/nginx/sites-enabled/* &&\
-    cp /docker/nginx/nginx_vhost \
-       /etc/nginx/sites-available/ &&\
-    ln -s /etc/nginx/sites-available/nginx_vhost \
-        /etc/nginx/sites-enabled/nginx_vhost &&\
-
-    cp /docker/fpm/php-fpm.conf /etc/php/5.6/fpm/php-fpm.conf &&\
-    cp /docker/fpm/www.conf /etc/php/5.6/fpm/pool.d/www.conf &&\
-
-    rm -R /var/www/* &&\
-    mkdir -p -m 0755 /var/www/html &&\
-    chown www-data:www-data /var/www/html &&\
-    cp /docker/index.php /var/www/html/index.php &&\
-
-    rm -R /docker
-
-VOLUME ["/var/www/html/", "/var/lib/php/sessions"]
-
-EXPOSE 80
-
-CMD php-fpm5.6 --allow-to-run-as-root --nodaemonize \
-               --fpm-config /etc/php/5.6/fpm/php-fpm.conf & \
-    nginx -g "daemon off;"
+CMD ["/usr/sbin/httpd", "-DFOREGROUND"]
