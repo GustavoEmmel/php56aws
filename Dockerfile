@@ -1,18 +1,47 @@
-FROM amazonlinux
+FROM ubuntu:16.04
 
-MAINTAINER Kenta Oouchida <oouchida@gmail.com>
+MAINTAINER Alexey Nurgaliev <atnurgaliev@gmail.com>
 
-RUN yum update -y && \
-	yum install vim git -y && \
-	yum install httpd24 -y && \
-	yum install php70 -y && \
-	yum install php70-mbstring php70-pdo php70-mysqlnd php70-opcache -y
+ENV LANG=C.UTF-8
+ENV DEBIAN_FRONTEND=noninteractive
 
-RUN sed -i -e "s/AllowOverride None/AllowOverride All/" /etc/httpd/conf/httpd.conf
-RUN sed -i -e "s/Options Indexes FollowSymLinks/Options -Indexes +FollowSymLinks/" /etc/httpd/conf/httpd.conf
-RUN chkconfig httpd on
+ADD docker /docker
 
-expose 80
-expose 443
+RUN apt-get update &&\
+    apt-get upgrade -y &&\
+    apt-get install -y software-properties-common &&\
+    add-apt-repository -y ppa:ondrej/php &&\
+    add-apt-repository -y ppa:nginx/stable &&\
+    apt-get update &&\
+    apt-get install -y \
+      nginx \
+      php5.6-fpm php5.6-cli php5.6-cgi \
+      php5.6-interbase php5.6-pgsql php5.6-mysql \
+      php5.6-curl php5.6-mbstring \
+      php5.6-gd php5.6-xml php5.6-zip php5.6-json \
+      php-pear php-igbinary php-mongo php-redis &&\
+    apt-get purge -y --auto-remove software-properties-common &&\
 
-CMD ["/usr/sbin/httpd", "-DFOREGROUND"]
+    rm /etc/nginx/sites-enabled/* &&\
+    cp /docker/nginx/nginx_vhost \
+       /etc/nginx/sites-available/ &&\
+    ln -s /etc/nginx/sites-available/nginx_vhost \
+        /etc/nginx/sites-enabled/nginx_vhost &&\
+
+    cp /docker/fpm/php-fpm.conf /etc/php/5.6/fpm/php-fpm.conf &&\
+    cp /docker/fpm/www.conf /etc/php/5.6/fpm/pool.d/www.conf &&\
+
+    rm -R /var/www/* &&\
+    mkdir -p -m 0755 /var/www/html &&\
+    chown www-data:www-data /var/www/html &&\
+    cp /docker/index.php /var/www/html/index.php &&\
+
+    rm -R /docker
+
+VOLUME ["/var/www/html/", "/var/lib/php/sessions"]
+
+EXPOSE 80
+
+CMD php-fpm5.6 --allow-to-run-as-root --nodaemonize \
+               --fpm-config /etc/php/5.6/fpm/php-fpm.conf & \
+    nginx -g "daemon off;"
